@@ -1,0 +1,165 @@
+---
+title: "NYPD Shooting Incidents Data Analysis"
+author: "E.Zhu"
+date: "2024-03-02"
+output: html_document
+---
+
+Load package: tidyverse and lubridate.
+```{r load-packages, message = FALSE}
+library(lubridate)
+library(tidyverse)
+```
+
+Import the dataset.
+```{r get_data}
+url_in <- "https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic/resource/c564b578-fd8a-4005-8365-34150d306cc4"
+file_names <- c("NYPD_Shooting_Incident_Data__Historic_.csv")
+nypd_data <- read_csv(file_names)
+```
+
+Tidy the dataset.\
+1, Remove columns which are not used in the analysis.\
+2, Check if there is any blank(NA) in the dataset. 
+```{r tidy_data}
+#Remove columns which are not used in the analysis, turn Occur date to date object 
+nypd_data <- nypd_data %>%
+  select(-c(INCIDENT_KEY, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, LOC_OF_OCCUR_DESC, 
+            LOC_CLASSFCTN_DESC, LOCATION_DESC, X_COORD_CD,JURISDICTION_CODE,
+            Y_COORD_CD, Latitude, Longitude, Lon_Lat)) %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+  mutate(OCCUR_YEAR = year(OCCUR_DATE))
+
+
+#Check if there is any NA in the dataset
+nypd_data %>%
+  summarise(OCCUR_DATE_na = sum(is.na(OCCUR_DATE)),
+            OCCUR_TIME_na = sum(is.na(OCCUR_TIME)),
+            BORO_na = sum(is.na(BORO)),
+            PRECINCT_na = sum(is.na(PRECINCT)),
+            STATISTICAL_MURDER_FLAG_na = sum(is.na(STATISTICAL_MURDER_FLAG)),
+            VIC_AGE_GROUP_na = sum(is.na(VIC_AGE_GROUP)),
+            VIC_SEX_na = sum(is.na(VIC_SEX)),
+            VIC_RACE_na = sum(is.na(VIC_RACE)))
+```
+
+Analyze the dataset.\
+According to the dataset we have now, raise questions as following.\
+1, How does shooting incidents number change over time?\
+2, Are there any patterns among shooting incidents numbers in 
+different Boroughs and victim ages over time?\ 
+```{r Analyze_total_incidents_number}
+#Check the time period
+nypd_data %>%
+  summarise(min = min(OCCUR_DATE), max = max(OCCUR_DATE))
+
+#Incidents number over years
+yearly_incidents <- nypd_data %>%
+  count(OCCUR_YEAR)
+
+#Visualize total incidents number over years
+ggplot(yearly_incidents, aes(x = OCCUR_YEAR, y = n)) +
+  geom_point(color = "blue") +
+  geom_line(color = "blue") +
+  labs(title = "Distribution of Shooting Incidents Over Years",
+       x = "Year", y = "Number of incidents") +
+  scale_x_continuous(breaks = yearly_incidents$OCCUR_YEAR) +
+  theme_minimal()
+```
+\
+Data shows shooting incidents number in New York was trending down during 2006-2017,
+kept in low place during 2017-2019, went up sharply in 2020 and finally got back into down trace in 2022. \
+\
+
+```{r Analyze_incidents_number_borough}
+#Visualize incidents number by borough over years
+boro_yearly_incidents <- nypd_data %>%
+  group_by(OCCUR_YEAR, BORO) %>%
+  count(OCCUR_YEAR)
+ggplot(boro_yearly_incidents, aes(x = OCCUR_YEAR, y = n, color = BORO)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Distribution of Shooting Incidents by BORO Over Years",
+       x = "Year", y = "Number of incidents", color = "Borough") +
+  scale_x_continuous(breaks = boro_yearly_incidents$OCCUR_YEAR) +
+  theme_minimal()
+```
+\
+Shooting incidents data by borough shows Staten Island keeps the lowest shooting incidents numbers over time, and there was no obvious going up of numbers in the year 2020 while shooting incidents numbers in other boroughs went up sharply in 2020.\
+\
+\
+
+```{r Analyze_incidents_number_victim_age}
+#Visualize incidents number by victims' age over years
+vic_age_yearly_incidents <- nypd_data %>%
+  group_by(OCCUR_YEAR, VIC_AGE_GROUP) %>%
+  count(OCCUR_YEAR)
+ggplot(vic_age_yearly_incidents, aes(x = OCCUR_YEAR, y = n, color = VIC_AGE_GROUP)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Distribution of Shooting Incidents by Victims' Age Over Years",
+       x = "Year", y = "Number of incidents", color = "Victims' Age") +
+  scale_x_continuous(breaks = vic_age_yearly_incidents$OCCUR_YEAR) +
+  theme_minimal()
+```
+\
+Shooting incidents number with victims' age under 18 and over 45 kept much lower than the number with victims' age between 18 and 45, didn't show obvious going up in 2020 while shooting incidents involving victims with age between 18 and 45 increased a lot in the same year. \
+\
+Possible explanations for the different incident numbers shown above:\
+1, Total shooting incidents number trends to go down over time.\
+2, The outbreak of pandemic in 2020 boosted shooting incidents. \
+3, Differences of trend of shooting incidents number in different boroughs and victim ages might indicate that less economy-related  boroughs and ages stayed away from the impact and chaos of the pandemic in 2020.\  
+\
+\
+\
+Linear Regression of shooting incidents over years. 
+```{r linear_modeling_data}
+#Make a linear model 
+model <- lm(n ~ OCCUR_YEAR, data = yearly_incidents)
+summary(model)
+
+#Visualize the modeling
+ggplot(yearly_incidents, aes(x = OCCUR_YEAR, y = n)) +
+  geom_point(color = "skyblue") +  
+  geom_smooth(method = "lm", se = FALSE, color = "red") +  
+  labs(title = "Linear Regression of Shooting Incidents Over Years",
+       x = "Year",
+       y = "Number of Incidents") +
+  scale_x_continuous(breaks = yearly_incidents$OCCUR_YEAR)
+```
+
+According to the modeling outputs summary, the model as a whole is not statistically significant. Some far-away points during 2016-2022, including lower points from the regression line during 2016-2019 and higher ones during 2020-2022. \
+The higher points from the regression line during 2020-2022 can be reasonably considered as the impact from the pandemic.\
+Is there any explanation for the lower points during 2016-2019?\
+After some research, a few information popped out saying NYPD had been responding more effectively to an increasing volume of calls for help since 2015 and it helped to reduce the crime in NYC, as shown in following NYPD website screenshot. 
+
+```{r insert_image}
+#Insert NYPD website screenshot
+knitr::include_graphics("NYPD image_1.png")
+```
+\
+\
+Select only from 2006 to 2016 and do the linear regression modeling, and visualize it.
+```{r linear_modeling_data_from_2006_to_2016}
+selected_nypd_data <- nypd_data %>%
+  filter(OCCUR_YEAR >= 2006 & OCCUR_YEAR <= 2016)
+selected_yearly_incidents <- selected_nypd_data %>%
+  count(OCCUR_YEAR)
+model <- lm(n ~ OCCUR_YEAR, data = selected_yearly_incidents)
+summary(model)
+
+ggplot(selected_yearly_incidents, aes(x = OCCUR_YEAR, y = n)) +
+  geom_point(color = "skyblue") +  
+  geom_smooth(method = "lm", se = FALSE, color = "red") +  
+  labs(title = "Linear Regression of Shooting Incidents Over Selected Years",
+       x = "Year",
+       y = "Number of Incidents") +
+  scale_x_continuous(breaks = selected_yearly_incidents$OCCUR_YEAR)
+```
+\
+The outputs of the linear regression shows a significant model as a whole.\
+But can we say shooting incidents number decreases steadily over time because of some social progress like education or the effort from the police? \
+Might not.\
+Shooting incident itself has uncertainty in it and it is not enough to take only shooting incidents number to discuss social progress. Probably we need to analyze other crime numbers along with shooting incidents to make a more sufficient analysis and to keep a lower bias level.\
+\
+--THE END--
